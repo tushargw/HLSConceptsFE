@@ -1,0 +1,92 @@
+name: Build and Deploy Angular App
+
+on:
+  push:
+    branches:
+      - mainNotReady
+      - developNotReady
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '22'
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Build Angular app
+      run: npm run build --prod
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: build-artifacts
+        path: dist/
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v2
+      with:
+        name: build-artifacts
+        path: dist/
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Deploy to Azure Web App (Production)
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: ${{ secrets.AZURE_APP_SERVICE_NAME }}
+        slot-name: 'production'
+        package: 'dist/your-angular-app'
+
+    - name: Purge Azure CDN endpoint
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          az cdn endpoint purge -g ${{ secrets.AZURE_RESOURCE_GROUP }} -n ${{ secrets.AZURE_CDN_ENDPOINT_NAME }} --profile-name ${{ secrets.AZURE_CDN_PROFILE_NAME }} --content-paths '/*'
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/develop'
+
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v2
+      with:
+        name: build-artifacts
+        path: dist/
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Deploy to Azure Web App (Staging)
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: ${{ secrets.AZURE_APP_SERVICE_NAME }}
+        slot-name: 'staging'
+        package: 'dist/your-angular-app'
+
+    - name: Purge Azure CDN endpoint
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          az cdn endpoint purge -g ${{ secrets.AZURE_RESOURCE_GROUP }} -n ${{ secrets.AZURE_CDN_ENDPOINT_NAME }} --profile-name ${{ secrets.AZURE_CDN_PROFILE_NAME }} --content-paths '/*'
